@@ -28,6 +28,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 
@@ -68,7 +69,9 @@ def load_queue() -> list[dict]:
     if not QUEUE_PATH.exists():
         log("queue.json not found — nothing to do.")
         return []
-    with QUEUE_PATH.open(encoding="utf-8") as fh:
+    # utf-8-sig strips a byte-order mark if present. PowerShell's
+    # Set-Content -Encoding utf8 writes one, and plain utf-8 chokes on it.
+    with QUEUE_PATH.open(encoding="utf-8-sig") as fh:
         data = json.load(fh)
     return data.get("items", data) if isinstance(data, dict) else data
 
@@ -110,9 +113,19 @@ def graph_get(path: str, token: str, **params) -> dict:
 
 
 def media_url(base: str, relative: str) -> str:
+    """Build the public URL Meta will fetch.
+
+    Filenames carry Arabic characters, and the URL is handed to the Graph API
+    as a plain string for Meta's own fetcher to resolve — so it has to be
+    percent-encoded here. Unencoded, Meta requests a path that doesn't match,
+    GitHub Pages answers with its 404 HTML page, and Meta reports
+    "Only photo or video can be accepted as media type" because it downloaded
+    HTML instead of a JPEG.
+    """
     if relative.startswith(("http://", "https://")):
         return relative
-    return f"{base.rstrip('/')}/{relative.lstrip('/')}"
+    path = quote(relative.lstrip("/"), safe="/")
+    return f"{base.rstrip('/')}/{path}"
 
 
 # --------------------------------------------------------------------------
