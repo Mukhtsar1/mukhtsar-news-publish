@@ -1,0 +1,100 @@
+name: publish
+
+on:
+  schedule:
+    # Hourly, on the hour, UTC. 20:00 Riyadh = 17:00 UTC.
+    # GitHub delays scheduled runs under load, sometimes by 10-30 minutes.
+    # publish.py compares publish_at <= now rather than matching the hour,
+    # so a late run still publishes instead of skipping.
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List due items without publishing"
+        type: boolean
+        default: false
+
+concurrency:
+  # Never let a delayed run overlap the next one — double publishing is
+  # not something the Graph API will save you from.
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --quiet requests
+
+      - name: Publish due items
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          MEDIA_BASE_URL: ${{ vars.MEDIA_BASE_URL }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python publish.py --dry-run
+          else
+            python publish.py
+          fi
+
+      - name: Commit queue state
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain queue.json)" ]; then
+            git config user.name "mukhtsar-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add queue.json
+            git commit -m "queue: publish results $(date -u +%Y-%m-%dT%H:%MZ)"
+            # Rebase in case queue.py pushed a new batch mid-run.
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            git push
+          else
+            echo "queue.json unchanged"
+          fi
+
+      - name: Prune published media older than 14 days
+        if: success()
+        run: |
+          python - <<'PY'
+          import json, subprocess
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          cutoff = datetime.now(timezone.utc) - timedelta(days=14)
+          items = json.load(open("queue.json", encoding="utf-8")).get("items", [])
+          stale = []
+          for entry in items:
+              if entry.get("status") != "published":
+                  continue
+              ts = entry.get("published_at")
+              if not ts:
+                  continue
+              if datetime.fromisoformat(ts.replace("Z", "+00:00")) < cutoff:
+                  media = entry.get("media")
+                  stale += media if isinstance(media, list) else [media]
+          removed = [p for p in stale if p and Path(p).exists()]
+          for p in removed:
+              Path(p).unlink()
+          if removed:
+              subprocess.run(["git", "config", "user.name", "mukhtsar-bot"], check=True)
+              subprocess.run(["git", "config", "user.email",
+                              "actions@users.noreply.github.com"], check=True)
+              subprocess.run(["git", "rm", "--cached", "-q", *removed], check=True)
+              subprocess.run(["git", "commit", "-m",
+                              f"prune {len(removed)} published media file(s)"], check=True)
+              subprocess.run(["git", "push"], check=True)
+              print(f"pruned {len(removed)} file(s)")
+          else:
+              print("nothing to prune")
+          PY
