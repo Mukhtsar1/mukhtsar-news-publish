@@ -584,6 +584,21 @@
       "attempts": 0,
       "media_id": "17961038735999282",
       "published_at": "2026-10-11T18:33:09+00:00"
+    },
+    {
+      "id": "carousel_3733_جدد_هويتك_بدل_التالف_بدون_زيار",
+      "type": "carousel",
+      "publish_at": "2026-10-23T17:00:00Z",
+      "media": [
+        "media/carousel_3733_slide_01.jpg",
+        "media/carousel_3733_slide_02.jpg",
+        "media/carousel_3733_slide_03.jpg",
+        "media/carousel_3733_slide_04.jpg",
+        "media/carousel_3733_slide_05.jpg"
+      ],
+      "caption": "لا داعي للانتظار في المواعيد! 🛑 يمكنك الآن استخراج هوية وطنية «بدل تالف» وأنت في منزلك عبر منصة أبشر بخطوات بسيطة.\n\nتصفح الشرائح لتعرف الطريقة والشروط.\n\n#أبشر #الأحوال_المدنية #السعودية #هوية_وطنية #خدمات_إلكترونية",
+      "status": "pending",
+      "attempts": 0
     }
   ]
 }
